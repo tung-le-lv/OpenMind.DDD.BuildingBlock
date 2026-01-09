@@ -1,5 +1,5 @@
 using BuildingBlocks.Integration;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 using Order.IntegrationEvents;
 using Payment.Application.Handlers;
 using Payment.Application.IntegrationEventHandlers;
@@ -13,9 +13,14 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
 
-// DbContext with In-Memory database for demo
-builder.Services.AddDbContext<PaymentDbContext>(options =>
-    options.UseInMemoryDatabase("PaymentDb"));
+// Configure MongoDB serialization for DDD entities
+MongoDbConfiguration.Configure();
+
+// MongoDB configuration
+var mongoSettings = builder.Configuration.GetSection("MongoDB").Get<MongoDbSettings>() ?? new MongoDbSettings();
+builder.Services.AddSingleton<IMongoClient>(new MongoClient(mongoSettings.ConnectionString));
+builder.Services.AddScoped(sp => sp.GetRequiredService<IMongoClient>().GetDatabase(mongoSettings.DatabaseName));
+builder.Services.AddScoped<PaymentMongoDbContext>();
 
 // MediatR for CQRS
 builder.Services.AddMediatR(cfg =>

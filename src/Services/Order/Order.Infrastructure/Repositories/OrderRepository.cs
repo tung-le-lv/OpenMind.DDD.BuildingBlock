@@ -1,5 +1,5 @@
 using BuildingBlocks.Domain;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 using Order.Domain.Aggregates.OrderAggregate;
 using Order.Domain.Repositories;
 using Order.Domain.ValueObjects;
@@ -7,7 +7,7 @@ using Order.Infrastructure.Persistence;
 
 namespace Order.Infrastructure.Repositories;
 
-public class OrderRepository(OrderDbContext context) : IOrderRepository
+public class OrderRepository(OrderMongoDbContext context) : IOrderRepository
 {
     public IUnitOfWork UnitOfWork => context;
 
@@ -16,31 +16,39 @@ public class OrderRepository(OrderDbContext context) : IOrderRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Orders
-            .Include(o => o.OrderItems)
-            .FirstOrDefaultAsync(o => o.Id == id, cancellationToken);
+            .Find(o => o.Id == id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<Domain.Aggregates.OrderAggregate.Order> AddAsync(
+    public Task<Domain.Aggregates.OrderAggregate.Order> AddAsync(
         Domain.Aggregates.OrderAggregate.Order aggregate,
         CancellationToken cancellationToken = default)
     {
-        var entry = await context.Orders.AddAsync(aggregate, cancellationToken);
-        return entry.Entity;
+        context.AddDomainEvents(aggregate.DomainEvents);
+        aggregate.ClearDomainEvents();
+        context.AddCommand(() => context.Orders.InsertOneAsync(aggregate, cancellationToken: cancellationToken));
+        return Task.FromResult(aggregate);
     }
 
     public void Update(Domain.Aggregates.OrderAggregate.Order aggregate)
     {
-        context.Entry(aggregate).State = EntityState.Modified;
+        context.AddDomainEvents(aggregate.DomainEvents);
+        aggregate.ClearDomainEvents();
+        context.AddCommand(() => context.Orders.ReplaceOneAsync(
+            o => o.Id == aggregate.Id,
+            aggregate));
     }
 
     public void Remove(Domain.Aggregates.OrderAggregate.Order aggregate)
     {
-        context.Orders.Remove(aggregate);
+        context.AddCommand(() => context.Orders.DeleteOneAsync(o => o.Id == aggregate.Id));
     }
 
     public async Task<bool> ExistsAsync(OrderId id, CancellationToken cancellationToken = default)
     {
-        return await context.Orders.AnyAsync(o => o.Id == id, cancellationToken);
+        return await context.Orders
+            .Find(o => o.Id == id)
+            .AnyAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<Domain.Aggregates.OrderAggregate.Order>> GetByCustomerIdAsync(
@@ -48,9 +56,8 @@ public class OrderRepository(OrderDbContext context) : IOrderRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Orders
-            .Include(o => o.OrderItems)
-            .Where(o => o.CustomerId == customerId)
-            .OrderByDescending(o => o.CreatedAt)
+            .Find(o => o.CustomerId == customerId)
+            .SortByDescending(o => o.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -59,9 +66,8 @@ public class OrderRepository(OrderDbContext context) : IOrderRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Orders
-            .Include(o => o.OrderItems)
-            .Where(o => o.Status == status)
-            .OrderByDescending(o => o.CreatedAt)
+            .Find(o => o.Status == status)
+            .SortByDescending(o => o.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -69,9 +75,9 @@ public class OrderRepository(OrderDbContext context) : IOrderRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Orders
-            .Include(o => o.OrderItems)
-            .Where(o => o.Status == OrderStatus.Submitted)
-            .OrderBy(o => o.SubmittedAt)
+            .Find(o => o.Status == OrderStatus.Submitted)
+            .SortBy(o => o.SubmittedAt)
             .ToListAsync(cancellationToken);
     }
 }
+

@@ -1,5 +1,5 @@
 using BuildingBlocks.Domain;
-using Microsoft.EntityFrameworkCore;
+using MongoDB.Driver;
 using Payment.Domain.Aggregates.PaymentAggregate;
 using Payment.Domain.Repositories;
 using Payment.Domain.ValueObjects;
@@ -7,7 +7,7 @@ using Payment.Infrastructure.Persistence;
 
 namespace Payment.Infrastructure.Repositories;
 
-public class PaymentRepository(PaymentDbContext context) : IPaymentRepository
+public class PaymentRepository(PaymentMongoDbContext context) : IPaymentRepository
 {
     public IUnitOfWork UnitOfWork => context;
 
@@ -16,30 +16,39 @@ public class PaymentRepository(PaymentDbContext context) : IPaymentRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Payments
-            .FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+            .Find(p => p.Id == id)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
-    public async Task<Domain.Aggregates.PaymentAggregate.Payment> AddAsync(
+    public Task<Domain.Aggregates.PaymentAggregate.Payment> AddAsync(
         Domain.Aggregates.PaymentAggregate.Payment aggregate,
         CancellationToken cancellationToken = default)
     {
-        var entry = await context.Payments.AddAsync(aggregate, cancellationToken);
-        return entry.Entity;
+        context.AddDomainEvents(aggregate.DomainEvents);
+        aggregate.ClearDomainEvents();
+        context.AddCommand(() => context.Payments.InsertOneAsync(aggregate, cancellationToken: cancellationToken));
+        return Task.FromResult(aggregate);
     }
 
     public void Update(Domain.Aggregates.PaymentAggregate.Payment aggregate)
     {
-        context.Entry(aggregate).State = EntityState.Modified;
+        context.AddDomainEvents(aggregate.DomainEvents);
+        aggregate.ClearDomainEvents();
+        context.AddCommand(() => context.Payments.ReplaceOneAsync(
+            p => p.Id == aggregate.Id,
+            aggregate));
     }
 
     public void Remove(Domain.Aggregates.PaymentAggregate.Payment aggregate)
     {
-        context.Payments.Remove(aggregate);
+        context.AddCommand(() => context.Payments.DeleteOneAsync(p => p.Id == aggregate.Id));
     }
 
     public async Task<bool> ExistsAsync(PaymentId id, CancellationToken cancellationToken = default)
     {
-        return await context.Payments.AnyAsync(p => p.Id == id, cancellationToken);
+        return await context.Payments
+            .Find(p => p.Id == id)
+            .AnyAsync(cancellationToken);
     }
 
     public async Task<Domain.Aggregates.PaymentAggregate.Payment?> GetByOrderIdAsync(
@@ -47,7 +56,8 @@ public class PaymentRepository(PaymentDbContext context) : IPaymentRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Payments
-            .FirstOrDefaultAsync(p => p.OrderId == orderId, cancellationToken);
+            .Find(p => p.OrderId == orderId)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<Domain.Aggregates.PaymentAggregate.Payment>> GetByCustomerIdAsync(
@@ -55,8 +65,8 @@ public class PaymentRepository(PaymentDbContext context) : IPaymentRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Payments
-            .Where(p => p.CustomerId == customerId)
-            .OrderByDescending(p => p.CreatedAt)
+            .Find(p => p.CustomerId == customerId)
+            .SortByDescending(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -65,8 +75,8 @@ public class PaymentRepository(PaymentDbContext context) : IPaymentRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Payments
-            .Where(p => p.Status == status)
-            .OrderByDescending(p => p.CreatedAt)
+            .Find(p => p.Status == status)
+            .SortByDescending(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 
@@ -74,8 +84,9 @@ public class PaymentRepository(PaymentDbContext context) : IPaymentRepository
         CancellationToken cancellationToken = default)
     {
         return await context.Payments
-            .Where(p => p.Status == PaymentStatus.Pending)
-            .OrderBy(p => p.CreatedAt)
+            .Find(p => p.Status == PaymentStatus.Pending)
+            .SortBy(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
     }
 }
+

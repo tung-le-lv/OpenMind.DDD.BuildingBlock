@@ -12,8 +12,9 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
 
     public TId Id { get; protected set; } = default!;
 
-    private readonly List<IDomainEvent> _domainEvents = new();
-    public IReadOnlyCollection<IDomainEvent> DomainEvents => _domainEvents.AsReadOnly();
+    private List<IDomainEvent>? _domainEvents;
+    private List<IDomainEvent> DomainEventsList => _domainEvents ??= new();
+    public IReadOnlyCollection<IDomainEvent> DomainEvents => DomainEventsList.AsReadOnly();
 
     protected Entity() { }
 
@@ -28,7 +29,7 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
     /// </summary>
     public void AddDomainEvent(IDomainEvent domainEvent)
     {
-        _domainEvents.Add(domainEvent);
+        DomainEventsList.Add(domainEvent);
     }
 
     /// <summary>
@@ -36,7 +37,7 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
     /// </summary>
     public void RemoveDomainEvent(IDomainEvent domainEvent)
     {
-        _domainEvents.Remove(domainEvent);
+        DomainEventsList.Remove(domainEvent);
     }
 
     /// <summary>
@@ -44,7 +45,7 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
     /// </summary>
     public void ClearDomainEvents()
     {
-        _domainEvents.Clear();
+        _domainEvents?.Clear();
     }
 
     /// <summary>

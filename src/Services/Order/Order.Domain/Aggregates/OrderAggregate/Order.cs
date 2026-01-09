@@ -17,7 +17,7 @@ namespace Order.Domain.Aggregates.OrderAggregate;
 /// </summary>
 public class Order : AggregateRoot<OrderId>
 {
-    private readonly List<OrderItem> _orderItems = new();
+    private List<OrderItem> _orderItems = null!;
 
     public CustomerId CustomerId { get; private set; }
     public Address ShippingAddress { get; private set; }
@@ -36,7 +36,10 @@ public class Order : AggregateRoot<OrderId>
     public Money TotalAmount => CalculateTotalAmount();
     public string Currency { get; private set; }
 
-    private Order() { }
+    private Order() 
+    { 
+        _orderItems = new List<OrderItem>();
+    }
 
     #region Factory Methods
 

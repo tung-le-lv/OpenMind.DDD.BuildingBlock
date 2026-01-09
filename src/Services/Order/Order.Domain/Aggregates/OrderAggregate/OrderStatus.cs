@@ -6,7 +6,7 @@ namespace Order.Domain.Aggregates.OrderAggregate;
 /// Order Status using the Enumeration pattern from DDD.
 /// This provides type-safe, behavior-rich status values.
 /// </summary>
-public class OrderStatus : Enumeration
+public class OrderStatus(int id, string name) : Enumeration(id, name)
 {
     /// <summary>Order has been created but not yet submitted</summary>
     public static OrderStatus Draft = new(1, nameof(Draft));
@@ -32,8 +32,6 @@ public class OrderStatus : Enumeration
     /// <summary>Payment has failed</summary>
     public static OrderStatus PaymentFailed = new(8, nameof(PaymentFailed));
 
-    public OrderStatus(int id, string name) : base(id, name) { }
-
     /// <summary>
     /// Business rule: determines if the order can be cancelled from this status.
     /// </summary>
@@ -47,7 +45,7 @@ public class OrderStatus : Enumeration
     /// </summary>
     public bool CanAddItems()
     {
-        return this == Draft;
+        return Equals(this, Draft);
     }
 
     /// <summary>
@@ -55,7 +53,7 @@ public class OrderStatus : Enumeration
     /// </summary>
     public bool CanBeSubmitted()
     {
-        return this == Draft;
+        return Equals(this, Draft);
     }
 
     /// <summary>
@@ -63,6 +61,6 @@ public class OrderStatus : Enumeration
     /// </summary>
     public bool CanBePaid()
     {
-        return this == Submitted;
+        return Equals(this, Submitted);
     }
 }
