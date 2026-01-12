@@ -35,7 +35,7 @@ public class OrderPricingService : IOrderPricingService
     {
         var subtotal = order.TotalAmount;
 
-        if (discountPercentage > 0 && discountPercentage <= 100)
+        if (discountPercentage is > 0 and <= 100)
         {
             var discountAmount = subtotal.Amount * (discountPercentage / 100);
             return new Money(subtotal.Amount - discountAmount, subtotal.Currency);

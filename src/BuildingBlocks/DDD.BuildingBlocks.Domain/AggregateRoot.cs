@@ -28,7 +28,7 @@ public abstract class AggregateRoot<TId> : Entity<TId>, IAggregateRoot
     /// Raises a domain event indicating something has happened in the domain.
     /// Domain events are facts about what happened in the past.
     /// </summary>
-    protected void RaiseDomainEvent(IDomainEvent domainEvent)
+    protected void Emit(IDomainEvent domainEvent)
     {
         AddDomainEvent(domainEvent);
     }

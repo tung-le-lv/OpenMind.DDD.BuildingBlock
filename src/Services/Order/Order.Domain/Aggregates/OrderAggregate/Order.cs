@@ -58,8 +58,7 @@ public class Order : AggregateRoot<OrderId>
             CreatedAt = DateTime.UtcNow
         };
 
-        // Raise domain event
-        order.RaiseDomainEvent(new OrderCreatedDomainEvent(order.Id, order.CustomerId));
+        order.Emit(new OrderCreatedDomainEvent(order.Id, order.CustomerId));
 
         return order;
     }
@@ -67,18 +66,13 @@ public class Order : AggregateRoot<OrderId>
     #endregion
 
     #region Behavior Methods - Rich Domain Model
-
-    /// <summary>
-    /// Adds an item to the order.
-    /// Enforces the business rule that items can only be added to draft orders.
-    /// </summary>
+    
     public void AddItem(ProductId productId, string productName, Money unitPrice, int quantity)
     {
         // Enforce business rule
         if (!Status.CanAddItems())
-            throw new InvalidOperationException($"Cannot add items to an order in {Status.Name} status");
+            throw new DomainException($"Cannot add items to an order in {Status.Name} status");
 
-        // Check if product already exists in order
         var existingItem = _orderItems.FirstOrDefault(x => x.ProductId == productId);
         if (existingItem != null)
         {
@@ -86,24 +80,28 @@ public class Order : AggregateRoot<OrderId>
         }
         else
         {
+            // Validate max items count before adding new item
+            var maxItemsSpec = new MaxItemsCountSpecification(100);
+            if (!maxItemsSpec.IsSatisfiedBy(this))
+                throw new DomainException("Cannot add more than 100 items to an order");
+
             var newItem = OrderItem.Create(productId, productName, unitPrice, quantity);
             _orderItems.Add(newItem);
         }
 
         SetModified();
 
-        // Raise domain event
-        RaiseDomainEvent(new OrderItemAddedDomainEvent(Id, productId, productName, quantity));
+        Emit(new OrderItemAddedDomainEvent(Id, productId, productName, quantity));
     }
 
     public void RemoveItem(OrderItemId itemId)
     {
         if (!Status.CanAddItems())
-            throw new InvalidOperationException($"Cannot remove items from an order in {Status.Name} status");
+            throw new DomainException($"Cannot remove items from an order in {Status.Name} status");
 
         var item = _orderItems.FirstOrDefault(x => x.Id == itemId);
         if (item == null)
-            throw new InvalidOperationException($"Order item {itemId} not found");
+            throw new DomainException($"Order item {itemId} not found");
 
         _orderItems.Remove(item);
         SetModified();
@@ -112,15 +110,26 @@ public class Order : AggregateRoot<OrderId>
     public void UpdateItemQuantity(OrderItemId itemId, int newQuantity)
     {
         if (!Status.CanAddItems())
-            throw new InvalidOperationException($"Cannot update items in an order in {Status.Name} status");
+            throw new DomainException($"Cannot update items in an order in {Status.Name} status");
 
         var item = _orderItems.FirstOrDefault(x => x.Id == itemId);
         if (item == null)
-            throw new InvalidOperationException($"Order item {itemId} not found");
+            throw new DomainException($"Order item {itemId} not found");
 
         if (newQuantity <= 0)
         {
+            // Validate min items count before removing
+            var minItemsSpec = new MinItemsCountSpecification(1);
+            var maxItemsSpec = new MaxItemsCountSpecification(100);
+            var itemCountSpec = minItemsSpec & maxItemsSpec;
+            
             _orderItems.Remove(item);
+            
+            if (!itemCountSpec.IsSatisfiedBy(this))
+            {
+                _orderItems.Add(item); // Rollback
+                throw new DomainException("Order must have at least 1 item");
+            }
         }
         else
         {
@@ -133,7 +142,7 @@ public class Order : AggregateRoot<OrderId>
     public void UpdateShippingAddress(Address newAddress)
     {
         if (!Status.CanAddItems())
-            throw new InvalidOperationException($"Cannot update address for an order in {Status.Name} status");
+            throw new DomainException($"Cannot update address for an order in {Status.Name} status");
 
         ShippingAddress = newAddress ?? throw new ArgumentNullException(nameof(newAddress));
         SetModified();
@@ -151,21 +160,21 @@ public class Order : AggregateRoot<OrderId>
     public void Submit(decimal minimumOrderValue = 10.00m)
     {
         if (!Status.CanBeSubmitted())
-            throw new InvalidOperationException($"Cannot submit an order in {Status.Name} status");
+            throw new DomainException($"Cannot submit an order in {Status.Name} status");
 
         if (!_orderItems.Any())
-            throw new InvalidOperationException("Cannot submit an order without items");
+            throw new DomainException("Cannot submit an order without items");
 
         var minimumValueSpec = new MinimumOrderValueSpecification(minimumOrderValue);
         if (!minimumValueSpec.IsSatisfiedBy(this))
-            throw new InvalidOperationException($"Order total must be at least {minimumOrderValue:C}");
+            throw new DomainException($"Order total must be at least {minimumOrderValue:C}");
 
         Status = OrderStatus.Submitted;
         SubmittedAt = DateTime.UtcNow;
         SetModified();
 
         // Raise domain event - this will trigger integration event for Payment service
-        RaiseDomainEvent(new OrderSubmittedDomainEvent(
+        Emit(new OrderSubmittedDomainEvent(
             Id,
             CustomerId,
             TotalAmount.Amount,
@@ -178,31 +187,31 @@ public class Order : AggregateRoot<OrderId>
     public void MarkAsPaid(DateTime paidAt)
     {
         if (!Status.CanBePaid())
-            throw new InvalidOperationException($"Cannot mark order as paid in {Status.Name} status");
+            throw new DomainException($"Cannot mark order as paid in {Status.Name} status");
 
         Status = OrderStatus.Paid;
         PaidAt = paidAt;
         SetModified();
 
-        RaiseDomainEvent(new OrderPaidDomainEvent(Id, paidAt));
+        Emit(new OrderPaidDomainEvent(Id, paidAt));
     }
 
     public void MarkPaymentFailed(string reason)
     {
-        if (Status != OrderStatus.Submitted)
-            throw new InvalidOperationException($"Cannot mark payment as failed for order in {Status.Name} status");
+        if (!Status.CanMarkPaymentFailed())
+            throw new DomainException($"Cannot mark payment as failed for order in {Status.Name} status");
 
         Status = OrderStatus.PaymentFailed;
         SetModified();
 
-        RaiseDomainEvent(new OrderPaymentFailedDomainEvent(Id, reason));
+        Emit(new OrderPaymentFailedDomainEvent(Id, reason));
     }
 
     public void StartProcessing()
     {
         var readySpec = new OrderReadyForProcessingSpecification();
         if (!readySpec.IsSatisfiedBy(this))
-            throw new InvalidOperationException("Only paid orders can be processed");
+            throw new DomainException("Only paid orders can be processed");
 
         Status = OrderStatus.Processing;
         SetModified();
@@ -210,36 +219,36 @@ public class Order : AggregateRoot<OrderId>
 
     public void Ship()
     {
-        if (Status != OrderStatus.Processing)
-            throw new InvalidOperationException("Only processing orders can be shipped");
+        if (!Status.CanBeShipped())
+            throw new DomainException("Only processing orders can be shipped");
 
         Status = OrderStatus.Shipped;
         SetModified();
 
-        RaiseDomainEvent(new OrderShippedDomainEvent(Id));
+        Emit(new OrderShippedDomainEvent(Id));
     }
 
     public void MarkAsDelivered()
     {
-        if (Status != OrderStatus.Shipped)
-            throw new InvalidOperationException("Only shipped orders can be marked as delivered");
+        if (!Status.CanBeDelivered())
+            throw new DomainException("Only shipped orders can be marked as delivered");
 
         Status = OrderStatus.Delivered;
         SetModified();
 
-        RaiseDomainEvent(new OrderDeliveredDomainEvent(Id));
+        Emit(new OrderDeliveredDomainEvent(Id));
     }
 
     public void Cancel(string reason)
     {
         var cancellableSpec = new CancellableOrderSpecification();
         if (!cancellableSpec.IsSatisfiedBy(this))
-            throw new InvalidOperationException($"Cannot cancel an order in {Status.Name} status");
+            throw new DomainException($"Cannot cancel an order in {Status.Name} status");
 
         Status = OrderStatus.Cancelled;
         SetModified();
 
-        RaiseDomainEvent(new OrderCancelledDomainEvent(Id, reason));
+        Emit(new OrderCancelledDomainEvent(Id, reason));
     }
 
     #endregion

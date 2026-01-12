@@ -80,7 +80,7 @@ public class OrderItem : Entity<OrderItemId>
     internal void ApplyDiscount(Money discount)
     {
         if (discount.Amount > UnitPrice.Amount * Quantity)
-            throw new InvalidOperationException("Discount cannot exceed item total");
+            throw new DomainException("Discount cannot exceed item total");
 
         Discount = discount;
     }

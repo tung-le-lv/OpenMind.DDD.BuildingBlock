@@ -198,6 +198,62 @@ public class OrdersController(IMediator mediator, ILogger<OrdersController> logg
             return BadRequest(ex.Message);
         }
     }
+
+    [HttpPost("import")]
+    [ProducesResponseType(typeof(Guid), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ImportExternal(
+        [FromBody] ImportExternalOrderRequest request,
+        CancellationToken cancellationToken)
+    {
+        var command = new ImportExternalOrderCommand
+        {
+            ExternalOrderId = request.ExternalOrderId,
+            CustomerId = request.CustomerId,
+            CustomerName = request.CustomerName,
+            ShippingStreet = request.ShippingStreet,
+            ShippingCity = request.ShippingCity,
+            ShippingState = request.ShippingState,
+            ShippingCountry = request.ShippingCountry,
+            ShippingZipCode = request.ShippingZipCode,
+            Currency = request.Currency,
+            Items = request.Items.Select(i => new ImportExternalOrderItemCommand
+            {
+                ProductId = i.ProductId,
+                ProductName = i.ProductName,
+                UnitPrice = i.UnitPrice,
+                Quantity = i.Quantity
+            }).ToList(),
+            Notes = request.Notes
+        };
+
+        var orderId = await mediator.Send(command, cancellationToken);
+
+        logger.LogInformation("External order {ExternalOrderId} imported as {OrderId}", request.ExternalOrderId, orderId);
+
+        return CreatedAtAction(nameof(GetById), new { orderId }, orderId);
+    }
 }
 
 public record CancelOrderRequest(string Reason);
+
+public record ImportExternalOrderRequest(
+    string ExternalOrderId,
+    Guid CustomerId,
+    string CustomerName,
+    string ShippingStreet,
+    string ShippingCity,
+    string ShippingState,
+    string ShippingCountry,
+    string ShippingZipCode,
+    string Currency,
+    List<ImportExternalOrderItemRequest> Items,
+    string? Notes = null
+);
+
+public record ImportExternalOrderItemRequest(
+    Guid ProductId,
+    string ProductName,
+    decimal UnitPrice,
+    int Quantity
+);

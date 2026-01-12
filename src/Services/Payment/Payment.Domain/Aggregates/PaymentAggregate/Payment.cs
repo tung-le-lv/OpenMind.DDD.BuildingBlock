@@ -64,7 +64,7 @@ public class Payment : AggregateRoot<PaymentId>
             CreatedAt = DateTime.UtcNow
         };
 
-        payment.RaiseDomainEvent(new PaymentCreatedDomainEvent(
+        payment.Emit(new PaymentCreatedDomainEvent(
             payment.Id,
             payment.OrderId,
             payment.Amount.Amount,
@@ -80,17 +80,17 @@ public class Payment : AggregateRoot<PaymentId>
     public void StartProcessing()
     {
         if (!Status.CanBeProcessed())
-            throw new InvalidOperationException($"Cannot process payment in {Status.Name} status");
+            throw new DomainException($"Cannot process payment in {Status.Name} status");
 
         // Business rule: Check if card is expired
         if (CardDetails != null && CardDetails.IsExpired())
-            throw new InvalidOperationException("Card has expired");
+            throw new DomainException("Card has expired");
 
         Status = PaymentStatus.Processing;
         ProcessedAt = DateTime.UtcNow;
         IncrementVersion();
 
-        RaiseDomainEvent(new PaymentProcessingStartedDomainEvent(Id, OrderId));
+        Emit(new PaymentProcessingStartedDomainEvent(Id, OrderId));
     }
 
     /// <summary>
@@ -99,7 +99,7 @@ public class Payment : AggregateRoot<PaymentId>
     public void Complete(string transactionId)
     {
         if (Status != PaymentStatus.Processing)
-            throw new InvalidOperationException($"Cannot complete payment in {Status.Name} status");
+            throw new DomainException($"Cannot complete payment in {Status.Name} status");
 
         if (string.IsNullOrWhiteSpace(transactionId))
             throw new ArgumentException("Transaction ID is required", nameof(transactionId));
@@ -110,7 +110,7 @@ public class Payment : AggregateRoot<PaymentId>
         IncrementVersion();
 
         // This domain event will trigger an integration event to Order service
-        RaiseDomainEvent(new PaymentCompletedDomainEvent(
+        Emit(new PaymentCompletedDomainEvent(
             Id,
             OrderId,
             Amount.Amount,
@@ -123,7 +123,7 @@ public class Payment : AggregateRoot<PaymentId>
     public void Fail(string reason)
     {
         if (Status != PaymentStatus.Processing && Status != PaymentStatus.Pending)
-            throw new InvalidOperationException($"Cannot fail payment in {Status.Name} status");
+            throw new DomainException($"Cannot fail payment in {Status.Name} status");
 
         if (string.IsNullOrWhiteSpace(reason))
             throw new ArgumentException("Failure reason is required", nameof(reason));
@@ -133,30 +133,30 @@ public class Payment : AggregateRoot<PaymentId>
         IncrementVersion();
 
         // This domain event will trigger an integration event to Order service
-        RaiseDomainEvent(new PaymentFailedDomainEvent(Id, OrderId, reason));
+        Emit(new PaymentFailedDomainEvent(Id, OrderId, reason));
     }
 
     public void Refund(string reason)
     {
         if (!Status.CanBeRefunded())
-            throw new InvalidOperationException($"Cannot refund payment in {Status.Name} status");
+            throw new DomainException($"Cannot refund payment in {Status.Name} status");
 
         Status = PaymentStatus.Refunded;
         IncrementVersion();
 
-        RaiseDomainEvent(new PaymentRefundedDomainEvent(Id, OrderId, Amount.Amount, reason));
+        Emit(new PaymentRefundedDomainEvent(Id, OrderId, Amount.Amount, reason));
     }
 
     public void Cancel(string reason)
     {
         if (!Status.CanBeCancelled())
-            throw new InvalidOperationException($"Cannot cancel payment in {Status.Name} status");
+            throw new DomainException($"Cannot cancel payment in {Status.Name} status");
 
         Status = PaymentStatus.Cancelled;
         FailureReason = reason;
         IncrementVersion();
 
-        RaiseDomainEvent(new PaymentCancelledDomainEvent(Id, OrderId, reason));
+        Emit(new PaymentCancelledDomainEvent(Id, OrderId, reason));
     }
 
     #endregion

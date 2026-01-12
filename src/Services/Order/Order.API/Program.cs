@@ -1,5 +1,6 @@
 using BuildingBlocks.Integration;
 using MongoDB.Driver;
+using Order.Application.AntiCorruption;
 using Order.Application.Commands;
 using Order.Application.IntegrationEventHandlers;
 using Order.Domain.Repositories;
@@ -26,6 +27,9 @@ builder.Services.AddMediatR(cfg =>
 
 // Repository
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
+
+// Anti-Corruption Layer
+builder.Services.AddScoped<ExternalOrderTranslator>();
 
 // Event Bus
 builder.Services.AddSingleton<IEventBus, InMemoryEventBus>();
