@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using Payment.Domain.Specifications;
 using Payment.Domain.ValueObjects;
 
 namespace Payment.Domain.Services;
@@ -13,6 +14,12 @@ public interface IPaymentProcessingService : IDomainService
 {
     PaymentValidationResult ValidatePayment(Aggregates.PaymentAggregate.Payment payment);
     Money CalculateProcessingFee(Money amount, Aggregates.PaymentAggregate.PaymentMethod method);
+    
+    /// <summary>
+    /// Checks if a payment requires additional verification based on value.
+    /// Uses HighValuePaymentSpecification.
+    /// </summary>
+    bool RequiresAdditionalVerification(Aggregates.PaymentAggregate.Payment payment, decimal threshold = 1000m);
 }
 
 public record PaymentValidationResult
@@ -36,10 +43,10 @@ public class PaymentProcessingService : IPaymentProcessingService
         if (payment.CardDetails != null && payment.CardDetails.IsExpired())
             return PaymentValidationResult.Failure("Card has expired");
 
-        // Add more validation rules as needed
-        // - Check fraud detection
-        // - Check customer credit limit
-        // - Validate currency support
+        // Use Specification to check if payment can be processed
+        var pendingSpec = new PendingPaymentSpecification();
+        if (!pendingSpec.IsSatisfiedBy(payment))
+            return PaymentValidationResult.Failure($"Payment cannot be processed in {payment.Status.Name} status");
 
         return PaymentValidationResult.Success();
     }
@@ -58,5 +65,12 @@ public class PaymentProcessingService : IPaymentProcessingService
 
         var fee = amount.Amount * feePercentage;
         return new Money(Math.Round(fee, 2), amount.Currency);
+    }
+
+    public bool RequiresAdditionalVerification(Aggregates.PaymentAggregate.Payment payment, decimal threshold = 1000m)
+    {
+        // Use Specification pattern to check if payment is high-value
+        var highValueSpec = new HighValuePaymentSpecification(threshold);
+        return highValueSpec.IsSatisfiedBy(payment);
     }
 }

@@ -1,7 +1,9 @@
 using BuildingBlocks.Domain;
+using BuildingBlocks.Domain.Specifications;
 using MongoDB.Driver;
 using Order.Domain.Aggregates.OrderAggregate;
 using Order.Domain.Repositories;
+using Order.Domain.Specifications;
 using Order.Domain.ValueObjects;
 using Order.Infrastructure.Persistence;
 
@@ -78,6 +80,32 @@ public class OrderRepository(OrderMongoDbContext context) : IOrderRepository
             .Find(o => o.Status == OrderStatus.Submitted)
             .SortBy(o => o.SubmittedAt)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.OrderAggregate.Order>> FindAsync(
+        Specification<Domain.Aggregates.OrderAggregate.Order> specification,
+        CancellationToken cancellationToken = default)
+    {
+        var expression = specification.ToExpression();
+        return await context.Orders
+            .Find(expression)
+            .SortByDescending(o => o.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.OrderAggregate.Order>> GetOverdueOrdersAsync(
+        int hoursThreshold = 24,
+        CancellationToken cancellationToken = default)
+    {
+        var specification = new OverdueOrderSpecification(hoursThreshold);
+        return await FindAsync(specification, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.OrderAggregate.Order>> GetCancellableOrdersAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var specification = new CancellableOrderSpecification();
+        return await FindAsync(specification, cancellationToken);
     }
 }
 

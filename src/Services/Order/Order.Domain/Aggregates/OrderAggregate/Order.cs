@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using Order.Domain.BusinessRules;
 using Order.Domain.Events;
 using Order.Domain.Specifications;
 using Order.Domain.ValueObjects;
@@ -69,9 +70,9 @@ public class Order : AggregateRoot<OrderId>
     
     public void AddItem(ProductId productId, string productName, Money unitPrice, int quantity)
     {
-        // Enforce business rule
-        if (!Status.CanAddItems())
-            throw new DomainException($"Cannot add items to an order in {Status.Name} status");
+        // Enforce business rules using IBusinessRule pattern
+        CheckRule(new OrderMustBeInDraftStatusRule(Status));
+        CheckRule(new ItemQuantityMustBePositiveRule(quantity));
 
         var existingItem = _orderItems.FirstOrDefault(x => x.ProductId == productId);
         if (existingItem != null)
@@ -80,10 +81,8 @@ public class Order : AggregateRoot<OrderId>
         }
         else
         {
-            // Validate max items count before adding new item
-            var maxItemsSpec = new MaxItemsCountSpecification(100);
-            if (!maxItemsSpec.IsSatisfiedBy(this))
-                throw new DomainException("Cannot add more than 100 items to an order");
+            // Validate max items count before adding new item using IBusinessRule
+            CheckRule(new OrderCannotExceedMaxItemsRule(_orderItems.Count));
 
             var newItem = OrderItem.Create(productId, productName, unitPrice, quantity);
             _orderItems.Add(newItem);
@@ -96,8 +95,8 @@ public class Order : AggregateRoot<OrderId>
 
     public void RemoveItem(OrderItemId itemId)
     {
-        if (!Status.CanAddItems())
-            throw new DomainException($"Cannot remove items from an order in {Status.Name} status");
+        // Use IBusinessRule for clear validation message
+        CheckRule(new OrderMustBeInDraftStatusRule(Status));
 
         var item = _orderItems.FirstOrDefault(x => x.Id == itemId);
         if (item == null)
@@ -109,8 +108,8 @@ public class Order : AggregateRoot<OrderId>
 
     public void UpdateItemQuantity(OrderItemId itemId, int newQuantity)
     {
-        if (!Status.CanAddItems())
-            throw new DomainException($"Cannot update items in an order in {Status.Name} status");
+        // Use IBusinessRule for clear validation message
+        CheckRule(new OrderMustBeInDraftStatusRule(Status));
 
         var item = _orderItems.FirstOrDefault(x => x.Id == itemId);
         if (item == null)
@@ -141,8 +140,8 @@ public class Order : AggregateRoot<OrderId>
 
     public void UpdateShippingAddress(Address newAddress)
     {
-        if (!Status.CanAddItems())
-            throw new DomainException($"Cannot update address for an order in {Status.Name} status");
+        // Use IBusinessRule for clear validation message
+        CheckRule(new OrderMustBeInDraftStatusRule(Status));
 
         ShippingAddress = newAddress ?? throw new ArgumentNullException(nameof(newAddress));
         SetModified();
@@ -162,8 +161,8 @@ public class Order : AggregateRoot<OrderId>
         if (!Status.CanBeSubmitted())
             throw new DomainException($"Cannot submit an order in {Status.Name} status");
 
-        if (!_orderItems.Any())
-            throw new DomainException("Cannot submit an order without items");
+        // Use IBusinessRule for validation with clear error message
+        CheckRule(new OrderMustHaveAtLeastOneItemRule(_orderItems.Count));
 
         var minimumValueSpec = new MinimumOrderValueSpecification(minimumOrderValue);
         if (!minimumValueSpec.IsSatisfiedBy(this))
@@ -241,9 +240,9 @@ public class Order : AggregateRoot<OrderId>
 
     public void Cancel(string reason)
     {
-        var cancellableSpec = new CancellableOrderSpecification();
-        if (!cancellableSpec.IsSatisfiedBy(this))
-            throw new DomainException($"Cannot cancel an order in {Status.Name} status");
+        // Use IBusinessRule for validation with clear error message
+        // Note: The CancellableOrderSpecification is still available for querying cancellable orders
+        CheckRule(new OrderCannotBeCancelledAfterShippingRule(Status));
 
         Status = OrderStatus.Cancelled;
         SetModified();

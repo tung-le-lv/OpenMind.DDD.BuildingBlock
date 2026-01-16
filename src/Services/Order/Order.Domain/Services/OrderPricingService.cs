@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using Order.Domain.Aggregates.OrderAggregate;
+using Order.Domain.Specifications;
 using Order.Domain.ValueObjects;
 
 namespace Order.Domain.Services;
@@ -22,8 +23,15 @@ public interface IOrderPricingService : IDomainService
 
     /// <summary>
     /// Validates if a discount code is applicable to the order.
+    /// Uses MinimumOrderValueSpecification to ensure minimum order value.
     /// </summary>
     bool IsDiscountApplicable(Aggregates.OrderAggregate.Order order, string discountCode);
+
+    /// <summary>
+    /// Checks if an order qualifies for free shipping.
+    /// Uses MinimumOrderValueSpecification with a threshold.
+    /// </summary>
+    bool QualifiesForFreeShipping(Aggregates.OrderAggregate.Order order, decimal freeShippingThreshold = 100m);
 }
 
 public class OrderPricingService : IOrderPricingService
@@ -43,10 +51,20 @@ public class OrderPricingService : IOrderPricingService
 
     public bool IsDiscountApplicable(Aggregates.OrderAggregate.Order order, string discountCode)
     {
-        // Domain logic for discount validation
-        // In a real application, this might check against discount rules
-        return !string.IsNullOrEmpty(discountCode) &&
-               order.Status == OrderStatus.Draft &&
-               order.TotalAmount.Amount >= 50; // Minimum order amount for discount
+        if (string.IsNullOrEmpty(discountCode))
+            return false;
+
+        // Use Specification pattern to check minimum order value for discount eligibility
+        var minimumValueSpec = new MinimumOrderValueSpecification(50m);
+        var draftStatusSpec = order.Status == OrderStatus.Draft;
+        
+        return draftStatusSpec && minimumValueSpec.IsSatisfiedBy(order);
+    }
+
+    public bool QualifiesForFreeShipping(Aggregates.OrderAggregate.Order order, decimal freeShippingThreshold = 100m)
+    {
+        // Use Specification pattern to check if order meets free shipping threshold
+        var freeShippingSpec = new MinimumOrderValueSpecification(freeShippingThreshold);
+        return freeShippingSpec.IsSatisfiedBy(order);
     }
 }

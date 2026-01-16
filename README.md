@@ -28,6 +28,21 @@ DDD/
 └── DDD.sln
 ```
 
+## 🎯 Key DDD Principles Demonstrated
+
+1. **Rich Domain Model**: Business logic in domain entities, not services
+2. **Encapsulation**: Aggregate roots control access to internal entities
+3. **Immutability**: Value objects are immutable
+4. **Ubiquitous Language**: Code reflects domain terminology
+5. **Persistence Ignorance**: Domain layer has no infrastructure dependencies
+6. **Explicit Boundaries**: Clear separation between bounded contexts
+
+## 📖 References
+
+- Evans, Eric. "Domain-Driven Design: Tackling Complexity in the Heart of Software"
+- Vernon, Vaughn. "Implementing Domain-Driven Design"
+- Microsoft .NET Microservices Architecture Guide
+
 ## 📚 DDD Patterns Implemented
 
 ### Strategic Patterns
@@ -107,16 +122,73 @@ public interface IPaymentProcessingService : IDomainService
 ```
 
 #### 9. Specification Pattern
-Encapsulated business rules for querying.
+Encapsulated business rules for **querying and filtering**.
 ```csharp
 public class OrderReadyForProcessingSpecification : Specification<Order>
 {
     public override Expression<Func<Order, bool>> ToExpression()
         => order => order.Status == OrderStatus.Paid;
 }
+
+// Usage: Filtering/Querying
+var overdueOrders = await repository.FindAsync(new OverdueOrderSpecification(24));
+var cancellableOrders = await repository.FindAsync(new CancellableOrderSpecification());
+
+// Composable with And, Or, Not
+var spec = new MinimumOrderValueSpecification(100) & new CancellableOrderSpecification();
 ```
 
-#### 10. Enumeration Pattern
+#### 10. Business Rule Pattern
+Encapsulated business rules for **validation and enforcement** with clear error messages.
+```csharp
+public interface IBusinessRule
+{
+    bool IsBroken();
+    string Message { get; }
+    string Code => "BUSINESS_RULE_VIOLATION";
+}
+
+public class OrderMustHaveAtLeastOneItemRule : IBusinessRule
+{
+    private readonly int _itemCount;
+    
+    public OrderMustHaveAtLeastOneItemRule(int itemCount) => _itemCount = itemCount;
+    
+    public bool IsBroken() => _itemCount < 1;
+    public string Message => "Order must have at least one item before submission.";
+    public string Code => "ORDER_EMPTY";
+}
+
+// Usage in Aggregate Root
+public void Submit()
+{
+    CheckRule(new OrderMustHaveAtLeastOneItemRule(_orderItems.Count));
+    CheckRule(new OrderMustBeInDraftStatusRule(Status));
+    // ... proceed with submission
+}
+```
+
+### Specification vs Business Rule Pattern
+
+> 💡 Think of it this way: **Specification** is a *tester* (tells you if something is true), while **Business Rule** is a *guard* (enforces a policy and explains what went wrong).
+
+| Aspect | 🔍 Specification Pattern | 🛡️ Business Rule Pattern |
+|:-------|:-------------------------|:--------------------------|
+| **Primary Goal** | Selection & Filtering | Validation & Enforcement |
+| **Output** | Simple `boolean` | Result with error message + code |
+| **Logic Style** | Declarative | Policy-based |
+| **Example** | *"Is this order cancellable?"* | *"Order must have items to submit"* |
+| **Composition** | Chainable (`And`, `Or`, `Not`) | Flat list of rules |
+| **Use Case** | Repository queries, filtering | Invariant enforcement |
+| **Data Access** | Database queries (LINQ expressions) | In-memory validation |
+| **Reusability** | High (UI, Repository, Services) | Specific to action/command |
+| **Error Handling** | ❌ No error details | ✅ Rich error messages |
+
+**When to use which:**
+- Use **Specification** when you need to **filter** collections or check a **state** used in multiple places
+- Use **Business Rule** when you need to **validate** a specific action and return a clear reason when blocked
+
+#### 11. Enumeration Pattern
 Type-safe, behavior-rich enumerations.
 ```csharp
 public class OrderStatus : Enumeration
@@ -128,7 +200,7 @@ public class OrderStatus : Enumeration
 }
 ```
 
-#### 11. Factory Pattern
+#### 12. Factory Pattern
 Encapsulated object creation.
 ```csharp
 public static Order Create(CustomerId customerId, Address address)
@@ -234,17 +306,3 @@ Content-Type: application/json
 POST /api/orders/{orderId}/submit
 ```
 
-## 🎯 Key DDD Principles Demonstrated
-
-1. **Rich Domain Model**: Business logic in domain entities, not services
-2. **Encapsulation**: Aggregate roots control access to internal entities
-3. **Immutability**: Value objects are immutable
-4. **Ubiquitous Language**: Code reflects domain terminology
-5. **Persistence Ignorance**: Domain layer has no infrastructure dependencies
-6. **Explicit Boundaries**: Clear separation between bounded contexts
-
-## 📖 References
-
-- Evans, Eric. "Domain-Driven Design: Tackling Complexity in the Heart of Software"
-- Vernon, Vaughn. "Implementing Domain-Driven Design"
-- Microsoft .NET Microservices Architecture Guide

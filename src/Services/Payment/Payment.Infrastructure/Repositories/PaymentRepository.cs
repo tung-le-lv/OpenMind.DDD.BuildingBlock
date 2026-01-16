@@ -1,7 +1,9 @@
 using BuildingBlocks.Domain;
+using BuildingBlocks.Domain.Specifications;
 using MongoDB.Driver;
 using Payment.Domain.Aggregates.PaymentAggregate;
 using Payment.Domain.Repositories;
+using Payment.Domain.Specifications;
 using Payment.Domain.ValueObjects;
 using Payment.Infrastructure.Persistence;
 
@@ -83,10 +85,41 @@ public class PaymentRepository(PaymentMongoDbContext context) : IPaymentReposito
     public async Task<IReadOnlyList<Domain.Aggregates.PaymentAggregate.Payment>> GetPendingPaymentsAsync(
         CancellationToken cancellationToken = default)
     {
+        var specification = new PendingPaymentSpecification();
+        return await FindAsync(specification, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.PaymentAggregate.Payment>> FindAsync(
+        Specification<Domain.Aggregates.PaymentAggregate.Payment> specification,
+        CancellationToken cancellationToken = default)
+    {
+        var expression = specification.ToExpression();
         return await context.Payments
-            .Find(p => p.Status == PaymentStatus.Pending)
-            .SortBy(p => p.CreatedAt)
+            .Find(expression)
+            .SortByDescending(p => p.CreatedAt)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.PaymentAggregate.Payment>> GetRefundablePaymentsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var specification = new RefundablePaymentSpecification();
+        return await FindAsync(specification, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.PaymentAggregate.Payment>> GetFailedPaymentsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var specification = new FailedPaymentSpecification();
+        return await FindAsync(specification, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Domain.Aggregates.PaymentAggregate.Payment>> GetHighValuePaymentsAsync(
+        decimal threshold = 1000m,
+        CancellationToken cancellationToken = default)
+    {
+        var specification = new HighValuePaymentSpecification(threshold);
+        return await FindAsync(specification, cancellationToken);
     }
 }
 

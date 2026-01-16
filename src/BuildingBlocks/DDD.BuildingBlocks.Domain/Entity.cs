@@ -1,3 +1,5 @@
+using BuildingBlocks.Domain.BusinessRules;
+
 namespace BuildingBlocks.Domain;
 
 /// <summary>
@@ -46,6 +48,36 @@ public abstract class Entity<TId> : IEquatable<Entity<TId>>
     public void ClearDomainEvents()
     {
         _domainEvents?.Clear();
+    }
+
+    /// <summary>
+    /// Checks a business rule and throws a BusinessRuleValidationException if it is broken.
+    /// Use this method to enforce domain invariants within entity methods.
+    /// 
+    /// Unlike Specifications (which are "testers" for filtering/querying),
+    /// Business Rules are "guards" that enforce policies and provide clear error messages.
+    /// </summary>
+    /// <param name="rule">The business rule to check.</param>
+    /// <exception cref="BusinessRuleValidationException">Thrown when the rule is broken.</exception>
+    protected static void CheckRule(IBusinessRule rule)
+    {
+        if (rule.IsBroken())
+        {
+            throw new BusinessRuleValidationException(rule);
+        }
+    }
+
+    /// <summary>
+    /// Checks multiple business rules and throws on the first broken rule.
+    /// </summary>
+    /// <param name="rules">The business rules to check.</param>
+    /// <exception cref="BusinessRuleValidationException">Thrown when any rule is broken.</exception>
+    protected static void CheckRules(params IBusinessRule[] rules)
+    {
+        foreach (var rule in rules)
+        {
+            CheckRule(rule);
+        }
     }
 
     /// <summary>

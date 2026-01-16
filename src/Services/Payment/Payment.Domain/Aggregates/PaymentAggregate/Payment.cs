@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using Payment.Domain.BusinessRules;
 using Payment.Domain.Events;
 using Payment.Domain.ValueObjects;
 
@@ -45,12 +46,9 @@ public class Payment : AggregateRoot<PaymentId>
         PaymentMethod method,
         CardDetails? cardDetails = null)
     {
-        if (amount.Amount <= 0)
-            throw new ArgumentException("Payment amount must be positive", nameof(amount));
-
-        // Business rule: Card payments require card details
-        if ((method == PaymentMethod.CreditCard || method == PaymentMethod.DebitCard) && cardDetails == null)
-            throw new ArgumentException("Card details are required for card payments", nameof(cardDetails));
+        // Use IBusinessRule for validation with clear error messages
+        CheckRule(new PaymentAmountMustBePositiveRule(amount?.Amount ?? 0));
+        CheckRule(new CardPaymentMustHaveCardDetailsRule(method, cardDetails != null));
 
         var payment = new Payment
         {
@@ -79,12 +77,9 @@ public class Payment : AggregateRoot<PaymentId>
 
     public void StartProcessing()
     {
-        if (!Status.CanBeProcessed())
-            throw new DomainException($"Cannot process payment in {Status.Name} status");
-
-        // Business rule: Check if card is expired
-        if (CardDetails != null && CardDetails.IsExpired())
-            throw new DomainException("Card has expired");
+        // Use IBusinessRule for validation with clear error messages
+        CheckRule(new PaymentMustBeProcessableRule(Status));
+        CheckRule(new CardMustNotBeExpiredRule(CardDetails));
 
         Status = PaymentStatus.Processing;
         ProcessedAt = DateTime.UtcNow;
@@ -138,8 +133,8 @@ public class Payment : AggregateRoot<PaymentId>
 
     public void Refund(string reason)
     {
-        if (!Status.CanBeRefunded())
-            throw new DomainException($"Cannot refund payment in {Status.Name} status");
+        // Use IBusinessRule for validation with clear error message
+        CheckRule(new PaymentMustBeRefundableRule(Status));
 
         Status = PaymentStatus.Refunded;
         IncrementVersion();
