@@ -5,6 +5,7 @@ namespace Order.Domain.Aggregates.OrderAggregate;
 /// <summary>
 /// Order Status using the Enumeration pattern from DDD.
 /// This provides type-safe, behavior-rich status values.
+/// Popular library: https://github.com/ardalis/SmartEnum
 /// </summary>
 public class OrderStatus(int id, string name) : Enumeration(id, name)
 {

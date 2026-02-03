@@ -10,6 +10,30 @@ namespace Order.Domain.Factories;
 /// </summary>
 public class OrderFactory(CreateOrderData data) : Factory<Aggregates.OrderAggregate.Order, OrderId>
 {
+    public Aggregates.OrderAggregate.Order Create()
+    {
+        return CreateWithValidation(() =>
+        {
+            var order = Aggregates.OrderAggregate.Order.Create(
+                data.CustomerId,
+                data.ShippingAddress,
+                data.Currency
+            );
+
+            foreach (var item in data.Items)
+            {
+                order.AddItem(item.ProductId, item.ProductName, item.UnitPrice, item.Quantity);
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.Notes))
+            {
+                order.SetNotes(data.Notes);
+            }
+
+            return order;
+        });
+    }
+
     protected override void Validate()
     {
         if (data.CustomerId == null)
@@ -41,29 +65,5 @@ public class OrderFactory(CreateOrderData data) : Factory<Aggregates.OrderAggreg
             if (item.Quantity <= 0)
                 throw new DomainException("Quantity must be positive for all items");
         }
-    }
-
-    public Aggregates.OrderAggregate.Order Create()
-    {
-        return CreateWithValidation(() =>
-        {
-            var order = Aggregates.OrderAggregate.Order.Create(
-                data.CustomerId,
-                data.ShippingAddress,
-                data.Currency
-            );
-
-            foreach (var item in data.Items)
-            {
-                order.AddItem(item.ProductId, item.ProductName, item.UnitPrice, item.Quantity);
-            }
-
-            if (!string.IsNullOrWhiteSpace(data.Notes))
-            {
-                order.SetNotes(data.Notes);
-            }
-
-            return order;
-        });
     }
 }
